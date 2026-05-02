@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Data Protection Alert – Unauthorized Service Account Use</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f0f0f0;font-family:Arial,sans-serif;">
+
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f0f0f0;">
+  <tr>
+    <td align="center" style="padding:20px 0;">
+
+      <!-- Email Container -->
+      <table width="650" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff;border:1px solid #dddddd;">
+
+        <!-- HEADER -->
+        <tr>
+          <td style="background-color:#2e7fc1;padding:20px 30px;" align="left">
+            <table cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="background-color:#1a5f9a;padding:12px 18px;border-radius:4px;" align="center">
+                  <div style="color:#ffffff;font-size:11px;font-family:Arial,sans-serif;font-weight:bold;line-height:1.4;">
+                    ✉ A Message
+                  </div>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- TITLE -->
+        <tr>
+          <td style="padding:20px 30px 5px 30px;">
+            <p style="margin:0;font-size:24px;font-weight:bold;color:#2e7fc1;font-family:Arial,sans-serif;">from SCS Cyber Operations</p>
+          </td>
+        </tr>
+
+        <!-- SUBJECT BAR -->
+        <tr>
+          <td style="padding:5px 30px 15px 30px;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="background-color:#2e7fc1;padding:8px 12px;">
+                  <span style="color:#ffffff;font-size:12px;font-family:Arial,sans-serif;font-weight:bold;">
+                    Data Protection Alert – Unauthorized Service Account Use – Case XXXXXX
+                  </span>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- BODY -->
+        <tr>
+          <td style="padding:0 30px 15px 30px;">
+
+            <p style="font-size:13px;font-family:Arial,sans-serif;color:#333333;margin:0 0 12px 0;">Hi [Manager Name],</p>
+
+            <p style="font-size:13px;font-family:Arial,sans-serif;color:#333333;margin:0 0 12px 0;">
+              We identified recent <strong>interactive use of a non-human identity (service account)</strong> by a member of your team.
+              Service accounts are intended for automated system use only and should not be used for individual logins (e.g.,
+              desktop access or direct database access).
+            </p>
+
+            <!-- DETAILS SECTION -->
+            <p style="font-size:13px;font-family:Arial,sans-serif;color:#333333;font-weight:bold;margin:0 0 8px 0;">Details</p>
+            <ul style="font-size:13px;font-family:Arial,sans-serif;color:#333333;margin:0 0 15px 0;padding-left:20px;">
+              <li style="margin-bottom:4px;">Service Account: <a href="#" style="color:#2e7fc1;">[event_target_user_userid]</a></li>
+              <li style="margin-bottom:4px;">User: <a href="#" style="color:#2e7fc1;">[event_principal_user_userDisplayName]</a></li>
+              <li style="margin-bottom:4px;">Last Detected Use: <a href="#" style="color:#2e7fc1;">[event_metadata_eventTimestamp]</a></li>
+              <li style="margin-bottom:4px;">System/Environment: <a href="#" style="color:#2e7fc1;">[event_additional_database]</a></li>
+            </ul>
+
+            <!-- WHY THIS MATTERS -->
+            <p style="font-size:13px;font-family:Arial,sans-serif;color:#333333;font-weight:bold;margin:0 0 4px 0;">Why this matters</p>
+            <p style="font-size:13px;font-family:Arial,sans-serif;color:#333333;margin:0 0 6px 0;">Interactive use of service accounts:</p>
+            <ul style="font-size:13px;font-family:Arial,sans-serif;color:#333333;margin:0 0 15px 0;padding-left:20px;">
+              <li style="margin-bottom:4px;">Obscures accountability for actions taken</li>
+              <li style="margin-bottom:4px;">Bypasses key controls such as MFA and session monitoring</li>
+              <li style="margin-bottom:4px;">Increases risk to systems and sensitive data</li>
+            </ul>
+
+            <p style="font-size:13px;font-family:Arial,sans-serif;color:#333333;margin:0 0 15px 0;">
+              This activity is not permitted under the
+              <a href="#" style="color:#2e7fc1;">Identity, Authentication, and Access Management Standard (STND_00341)</a>
+              and/or the <a href="#" style="color:#2e7fc1;">Network Security Standard (STND_02781)</a>.
+            </p>
+
+            <!-- WHAT WE NEED FROM YOU -->
+            <p style="font-size:13px;font-family:Arial,sans-serif;color:#333333;font-weight:bold;margin:0 0 10px 0;">What we need from you</p>
+
+            <!-- ACTION ITEMS BOX -->
+            <table width="100%" cellpadding="0" cellspacing="0" border="1" style="border-color:#cccccc;border-collapse:collapse;margin-bottom:15px;">
+              <tr>
+                <td width="60" valign="top" style="padding:12px;background-color:#f9f9f9;border-right:1px solid #cccccc;" align="center">
+                  <div style="font-size:28px;">📋</div>
+                </td>
+                <td style="padding:12px;">
+                  <p style="font-size:13px;font-family:Arial,sans-serif;color:#333333;font-weight:bold;margin:0 0 6px 0;text-decoration:underline;">Action Items</p>
+                  <p style="font-size:13px;font-family:Arial,sans-serif;color:#333333;margin:0;">
+                    Please ensure that <a href="#" style="color:#2e7fc1;">[event_principal_user_userDisplayName]</a>
+                    <strong>stops using this service account for interactive access immediately.</strong>
+                    Access should be performed using an individual (human) account. If additional access is required,
+                    it should be requested through <a href="#" style="color:#2e7fc1;">MyAccess</a>.
+                    System credentials are intended only for system-to-system authentication and should not be used by human users.
+                  </p>
+                </td>
+              </tr>
+            </table>
+
+            <!-- WHAT HAPPENS NEXT -->
+            <p style="font-size:13px;font-family:Arial,sans-serif;color:#333333;font-weight:bold;margin:0 0 8px 0;">What happens next</p>
+            <ul style="font-size:13px;font-family:Arial,sans-serif;color:#333333;margin:0 0 15px 0;padding-left:20px;">
+              <li style="margin-bottom:4px;">We will close this case and continue to monitor for this activity</li>
+              <li style="margin-bottom:4px;">Continued use may result in access restriction or removal</li>
+              <li style="margin-bottom:4px;">Repeated occurrences will be escalated to leadership and may result in the service account being disabled</li>
+            </ul>
+
+            <p style="font-size:13px;font-family:Arial,sans-serif;color:#333333;margin:0 0 12px 0;">
+              If this service account is being used due to an access gap or tooling limitation, we can help resolve it quickly.
+              Please reference platform-specific guidance in <a href="#" style="color:#2e7fc1;">Database Access Governance (DAG)</a>,
+              or consult the following architecture resources:
+            </p>
+
+            <ul style="font-size:13px;font-family:Arial,sans-serif;color:#333333;margin:0 0 20px 0;padding-left:20px;">
+              <li style="margin-bottom:4px;"><a href="#" style="color:#2e7fc1;">System Credential Management Solution Selector (Schwab Architecture Library)</a></li>
+              <li style="margin-bottom:4px;"><a href="#" style="color:#2e7fc1;">System Authentication Solution Selector (Schwab Architecture Library)</a></li>
+            </ul>
+
+            <p style="font-size:13px;font-family:Arial,sans-serif;color:#333333;margin:0 0 20px 0;">Thank you for your prompt attention to this matter.</p>
+
+            <!-- SIGNATURE -->
+            <p style="font-size:13px;font-family:Arial,sans-serif;color:#333333;margin:0 0 4px 0;border-top:1px solid #333333;padding-top:8px;width:150px;">&nbsp;</p>
+            <p style="font-size:13px;font-family:Arial,sans-serif;color:#333333;margin:0 0 2px 0;">Data Protection Operations Team</p>
+            <p style="font-size:13px;font-family:Arial,sans-serif;color:#333333;margin:0 0 30px 0;">Schwab Cybersecurity Services (SCS)</p>
+
+          </td>
+        </tr>
+
+        <!-- FOOTER WITH LOGO -->
+        <tr>
+          <td style="padding:20px 30px;border-top:1px solid #eeeeee;" align="center">
+            <table cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td align="center">
+                  <!-- Charles Schwab Logo placeholder - replace src with base64 or URL -->
+                  <table cellpadding="0" cellspacing="0" border="0" style="background-color:#004b87;width:80px;height:80px;">
+                    <tr>
+                      <td align="center" valign="middle" style="padding:8px;">
+                        <span style="color:#ffffff;font-size:10px;font-family:Arial,sans-serif;font-weight:bold;line-height:1.3;">charles<br>SCHWAB</span>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              <tr>
+                <td align="center" style="padding-top:10px;">
+                  <span style="font-family:'Times New Roman',serif;font-style:italic;font-size:16px;color:#333333;">Own your tomorrow~</span>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+      </table>
+      <!-- End Email Container -->
+
+    </td>
+  </tr>
+</table>
+
+</body>
+</html>
