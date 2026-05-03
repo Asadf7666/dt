@@ -1,0 +1,35 @@
+import json
+
+# Define placeholders to detect unresolved values
+PLACEHOLDERS = [
+    "[event_target_user_userid]",
+    "[event_principal_user_userDisplayName]",
+    "[event_additional_database]"
+]
+
+def is_valid(value):
+    if not value:
+        return False
+    if not value.strip():
+        return False
+    if value.strip() in PLACEHOLDERS:
+        return False
+    return True
+
+# Get input parameters
+service_account = GetParam("service_account")
+user = GetParam("user")
+system_environment = GetParam("system_environment")
+
+# Check and build output
+result = {
+    "service_account": service_account if is_valid(service_account) else "NOT POPULATED - needs to be added manually",
+    "user": user if is_valid(user) else "NOT POPULATED - needs to be added manually",
+    "system_environment": system_environment if is_valid(system_environment) else "NOT POPULATED - needs to be added manually"
+}
+
+# Return JSON output
+output = json.dumps(result, indent=4)
+print(output)
+result_value = output
+is_success = True
