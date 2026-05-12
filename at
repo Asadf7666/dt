@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+
 import requests
 
 from TIPCommon.base.action import Action
@@ -148,18 +149,29 @@ class CreateRuleExclusionAction(Action):
             f"Request body: {json.dumps(body)}"
         )
 
-        try:
-            response = session.post(
-                url,
-                json=body,
-                verify=self.params.verify_ssl,
-            )
-            response.raise_for_status()
-        except requests.exceptions.RequestException as req_e:
-            raise GoogleChronicleManagerError(
-                "Network error while creating rule exclusion: "
-                f"{req_e}"
-            ) from req_e
+try:
+    response = session.post(
+        url,
+        json=body,
+        verify=self.params.verify_ssl,
+    )
+    response.raise_for_status()
+except requests.exceptions.HTTPError as http_e:
+    if response.status_code == 409:
+        raise GoogleChronicleManagerError(
+            f"Rule exclusion with display name "
+            f"\"{self.params.display_name}\" already exists. "
+            "Choose a unique display name."
+        ) from http_e
+    raise GoogleChronicleManagerError(
+        f"HTTP error while creating rule exclusion: {http_e}"
+    ) from http_e
+except requests.exceptions.RequestException as req_e:
+    raise GoogleChronicleManagerError(
+        f"Network error while creating rule exclusion: {req_e}"
+    ) from req_e
+
+
 
         try:
             response_json: SingleJson = response.json()
