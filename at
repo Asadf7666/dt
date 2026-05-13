@@ -29,10 +29,10 @@ from customutils import validate_api_root_for_backstory
 RULE_EXCLUSIONS_PATH = "findingsRefinements"
 
 
-class GetRuleExclusionAction(Action):
+class UpdateRuleExclusionAction(Action):
 
     def __init__(self) -> None:
-        super().__init__(consts.GET_RULE_EXCLUSION_SCRIPT_NAME)
+        super().__init__(consts.UPDATE_RULE_EXCLUSION_SCRIPT_NAME)
         self.output_message: str = ""
         self.json_results: SingleJson = {}
 
@@ -74,6 +74,18 @@ class GetRuleExclusionAction(Action):
             print_value=True,
         )
 
+        self.params.display_name = extract_action_param(
+            self.soar_action,
+            param_name="Display Name",
+            print_value=True,
+        )
+
+        self.params.query = extract_action_param(
+            self.soar_action,
+            param_name="Query",
+            print_value=True,
+        )
+
     def _validate_params(self) -> None:
         validator = validation.ParameterValidator(self.soar_action)
         if not is_empty_string_or_none(self.params.user_service_account):
@@ -87,6 +99,16 @@ class GetRuleExclusionAction(Action):
         if is_empty_string_or_none(self.params.refinement_id):
             raise GoogleChronicleValidationError(
                 "Parameter \"Refinement ID\" cannot be empty."
+            )
+
+        # Require at least one field to actually update.
+        if (
+            is_empty_string_or_none(self.params.display_name)
+            and is_empty_string_or_none(self.params.query)
+        ):
+            raise GoogleChronicleValidationError(
+                "At least one of \"Display Name\" or \"Query\" must "
+                "be provided to update the rule exclusion."
             )
 
     def _init_api_clients(self) -> GoogleChronicleManager:
@@ -114,21 +136,45 @@ class GetRuleExclusionAction(Action):
         )
         return f"{api_root}{RULE_EXCLUSIONS_PATH}/{refinement_id}"
 
-    def _perform_action(self, _=None) -> None:
-        refinement = self._get_refinement()
-        self._process_api_response(refinement)
+    def _build_update_mask_and_body(self) -> tuple[str, dict[str, Any]]:
+        """Build the update_mask query string and the request body
+        from whichever optional fields the user actually provided."""
+        update_fields: list[str] = []
+        body: dict[str, Any] = {}
 
-    def _get_refinement(self) -> SingleJson:
+        if not is_empty_string_or_none(self.params.display_name):
+            update_fields.append("display_name")
+            body["displayName"] = self.params.display_name
+
+        if not is_empty_string_or_none(self.params.query):
+            update_fields.append("query")
+            body["query"] = self.params.query
+
+        return ",".join(update_fields), body
+
+    def _perform_action(self, _=None) -> None:
+        updated_refinement = self._update_refinement()
+        self._process_api_response(updated_refinement)
+
+    def _update_refinement(self) -> SingleJson:
         url = self._build_request_url()
         session = self.api_client.session
+        update_mask, body = self._build_update_mask_and_body()
 
         self.soar_action.LOGGER.info(
-            f"Fetching rule exclusion from \"{url}\"."
+            f"Updating rule exclusion "
+            f"\"{self.params.refinement_id}\" at \"{url}\" "
+            f"with update_mask=\"{update_mask}\"."
+        )
+        self.soar_action.LOGGER.info(
+            f"Request body: {json.dumps(body)}"
         )
 
         try:
-            response = session.get(
+            response = session.patch(
                 url,
+                params={"update_mask": update_mask},
+                json=body,
                 verify=self.params.verify_ssl,
             )
             response.raise_for_status()
@@ -139,24 +185,29 @@ class GetRuleExclusionAction(Action):
                     f"\"{self.params.refinement_id}\" was not found "
                     "in Google SecOps."
                 ) from http_e
+            if response.status_code == 409:
+                raise GoogleChronicleManagerError(
+                    "Update conflicts with an existing rule exclusion. "
+                    "Choose a unique display name."
+                ) from http_e
             raise GoogleChronicleManagerError(
-                f"HTTP error while fetching rule exclusion: {http_e}"
+                f"HTTP error while updating rule exclusion: {http_e}"
             ) from http_e
         except requests.exceptions.RequestException as req_e:
             raise GoogleChronicleManagerError(
-                f"Network error while fetching rule exclusion: {req_e}"
+                f"Network error while updating rule exclusion: {req_e}"
             ) from req_e
 
         try:
             response_json: SingleJson = response.json()
         except json.JSONDecodeError as json_e:
             raise GoogleChronicleManagerError(
-                "Invalid JSON in rule exclusion response: "
+                "Invalid JSON in rule exclusion update response: "
                 f"{json_e}"
             ) from json_e
 
         self.soar_action.LOGGER.info(
-            "Rule exclusion successfully fetched. "
+            "Rule exclusion successfully updated. "
             f"API response: {json.dumps(response_json)}"
         )
 
@@ -175,15 +226,15 @@ class GetRuleExclusionAction(Action):
         )
 
         self.output_message = (
-            f"Successfully retrieved rule exclusion "
+            f"Successfully updated rule exclusion "
             f"\"{display_name}\" (ID: {refinement_id}) "
-            "from Google SecOps."
+            "in Google SecOps."
         )
         self.json_results = refinement
 
 
 def main() -> None:
-    action = GetRuleExclusionAction()
+    action = UpdateRuleExclusionAction()
     action.run()
 
 
