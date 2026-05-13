@@ -86,6 +86,12 @@ class UpdateRuleExclusionAction(Action):
             print_value=True,
         )
 
+        self.params.outcome_filters = extract_action_param(
+            self.soar_action,
+            param_name="Outcome Filters",
+            print_value=True,
+        )
+
     def _validate_params(self) -> None:
         validator = validation.ParameterValidator(self.soar_action)
         if not is_empty_string_or_none(self.params.user_service_account):
@@ -105,10 +111,12 @@ class UpdateRuleExclusionAction(Action):
         if (
             is_empty_string_or_none(self.params.display_name)
             and is_empty_string_or_none(self.params.query)
+            and is_empty_string_or_none(self.params.outcome_filters)
         ):
             raise GoogleChronicleValidationError(
-                "At least one of \"Display Name\" or \"Query\" must "
-                "be provided to update the rule exclusion."
+                "At least one of \"Display Name\", \"Query\", or "
+                "\"Outcome Filters\" must be provided to update "
+                "the rule exclusion."
             )
 
     def _init_api_clients(self) -> GoogleChronicleManager:
@@ -149,6 +157,32 @@ class UpdateRuleExclusionAction(Action):
         if not is_empty_string_or_none(self.params.query):
             update_fields.append("query")
             body["query"] = self.params.query
+
+        if not is_empty_string_or_none(self.params.outcome_filters):
+            raw = self.params.outcome_filters
+
+            # Handle both string input (IDE passes JSON as text, typical
+            # case) and pre-parsed input (some parameter types may return
+            # the parsed object directly).
+            if isinstance(raw, (list, dict)):
+                parsed_filters = raw
+            else:
+                try:
+                    parsed_filters = json.loads(raw)
+                except json.JSONDecodeError as json_e:
+                    raise GoogleChronicleValidationError(
+                        "Parameter \"Outcome Filters\" must be valid "
+                        f"JSON: {json_e}"
+                    ) from json_e
+
+            if not isinstance(parsed_filters, list):
+                raise GoogleChronicleValidationError(
+                    "Parameter \"Outcome Filters\" must be a JSON "
+                    "array of objects."
+                )
+
+            update_fields.append("outcome_filters")
+            body["outcomeFilters"] = parsed_filters
 
         return ",".join(update_fields), body
 
