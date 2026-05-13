@@ -84,6 +84,12 @@ class CreateRuleExclusionAction(Action):
             print_value=True,
         )
 
+        self.params.outcome_filters = extract_action_param(
+            self.soar_action,
+            param_name="Outcome Filters",
+            print_value=True,
+        )
+
     def _validate_params(self) -> None:
         validator = validation.ParameterValidator(self.soar_action)
         if not is_empty_string_or_none(self.params.user_service_account):
@@ -125,11 +131,38 @@ class CreateRuleExclusionAction(Action):
         return f"{api_root}{RULE_EXCLUSIONS_PATH}"
 
     def _build_request_body(self) -> dict[str, Any]:
-        return {
+        body: dict[str, Any] = {
             "type": DETECTION_EXCLUSION_TYPE,
             "displayName": self.params.display_name,
             "query": self.params.query,
         }
+
+        if not is_empty_string_or_none(self.params.outcome_filters):
+            raw = self.params.outcome_filters
+
+            # Handle both string input (IDE passes JSON as text, typical
+            # case) and pre-parsed input (some parameter types may return
+            # the parsed object directly).
+            if isinstance(raw, (list, dict)):
+                parsed_filters = raw
+            else:
+                try:
+                    parsed_filters = json.loads(raw)
+                except json.JSONDecodeError as json_e:
+                    raise GoogleChronicleValidationError(
+                        "Parameter \"Outcome Filters\" must be valid "
+                        f"JSON: {json_e}"
+                    ) from json_e
+
+            if not isinstance(parsed_filters, list):
+                raise GoogleChronicleValidationError(
+                    "Parameter \"Outcome Filters\" must be a JSON "
+                    "array of objects."
+                )
+
+            body["outcomeFilters"] = parsed_filters
+
+        return body
 
     def _perform_action(self, _=None) -> None:
         created_refinement = self._create_refinement()
@@ -155,10 +188,19 @@ class CreateRuleExclusionAction(Action):
                 verify=self.params.verify_ssl,
             )
             response.raise_for_status()
+        except requests.exceptions.HTTPError as http_e:
+            if response.status_code == 409:
+                raise GoogleChronicleManagerError(
+                    f"Rule exclusion with display name "
+                    f"\"{self.params.display_name}\" already exists. "
+                    "Choose a unique display name."
+                ) from http_e
+            raise GoogleChronicleManagerError(
+                f"HTTP error while creating rule exclusion: {http_e}"
+            ) from http_e
         except requests.exceptions.RequestException as req_e:
             raise GoogleChronicleManagerError(
-                "Network error while creating rule exclusion: "
-                f"{req_e}"
+                f"Network error while creating rule exclusion: {req_e}"
             ) from req_e
 
         try:
