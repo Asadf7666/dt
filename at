@@ -1,4 +1,4 @@
-from **future** import annotations
+from __future__ import annotations
 
 import json
 from typing import Any
@@ -13,164 +13,163 @@ from TIPCommon.types import SingleJson
 
 import customconsts as consts
 from customexceptions import (
-GoogleChronicleManagerError,
-GoogleChronicleValidationError,
+    GoogleChronicleManagerError,
+    GoogleChronicleValidationError,
 )
 from CustomGoogleChronicleManager import (
-GoogleChronicleManager,
+    GoogleChronicleManager,
 )
 from CustomGoogleChronicleManagerV2 import GoogleChronicleManagerV2
 from customutils import validate_api_root_for_backstory
 
+
 # Path appended to the configured Chronicle API root. The configured
-
 # api_root is expected to already include the
-
 # v1alpha/projects/{P}/locations/{L}/instances/{I} segment.
+RULE_EXCLUSIONS_PATH = "findingsRefinements"
 
-RULE_EXCLUSIONS_PATH = “findingsRefinements”
 
 class DeleteRuleExclusionAction(Action):
 
-```
-def __init__(self) -> None:
-    super().__init__(consts.DELETE_RULE_EXCLUSION_SCRIPT_NAME)
-    self.output_message: str = ""
-    self.json_results: SingleJson = {}
+    def __init__(self) -> None:
+        super().__init__(consts.DELETE_RULE_EXCLUSION_SCRIPT_NAME)
+        self.output_message: str = ""
+        self.json_results: SingleJson = {}
 
-def _extract_action_parameters(self) -> None:
-    self.params.user_service_account = extract_configuration_param(
-        self.soar_action,
-        provider_name=consts.INTEGRATION_NAME,
-        param_name="User's Service Account",
-        remove_whitespaces=False,
-    )
-
-    self.params.workload_identity_email = extract_configuration_param(
-        self.soar_action,
-        provider_name=consts.INTEGRATION_NAME,
-        param_name="Workload Identity Email",
-    )
-
-    self.params.api_root = extract_configuration_param(
-        self.soar_action,
-        provider_name=consts.INTEGRATION_NAME,
-        param_name="API Root",
-        is_mandatory=True,
-        print_value=True,
-    )
-
-    self.params.verify_ssl = extract_configuration_param(
-        self.soar_action,
-        provider_name=consts.INTEGRATION_NAME,
-        param_name="Verify SSL",
-        is_mandatory=True,
-        input_type=bool,
-        print_value=True,
-    )
-
-    self.params.refinement_id = extract_action_param(
-        self.soar_action,
-        param_name="Refinement ID",
-        is_mandatory=True,
-        print_value=True,
-    )
-
-def _validate_params(self) -> None:
-    validator = validation.ParameterValidator(self.soar_action)
-    if not is_empty_string_or_none(self.params.user_service_account):
-        self.params.user_service_account = validator.validate_json(
+    def _extract_action_parameters(self) -> None:
+        self.params.user_service_account = extract_configuration_param(
+            self.soar_action,
+            provider_name=consts.INTEGRATION_NAME,
             param_name="User's Service Account",
-            json_string=self.params.user_service_account,
-            print_value=False,
-        )
-    validate_api_root_for_backstory(self.params.api_root)
-
-    if is_empty_string_or_none(self.params.refinement_id):
-        raise GoogleChronicleValidationError(
-            "Parameter \"Refinement ID\" cannot be empty."
+            remove_whitespaces=False,
         )
 
-def _init_api_clients(self) -> GoogleChronicleManager:
-    # Manager is reused only to obtain an authenticated requests
-    # session against the Chronicle API. All endpoint logic stays
-    # in this action.
-    return GoogleChronicleManagerV2.create_manager_instance(
-        user_service_account=self.params.user_service_account,
-        chronicle_soar=self.soar_action,
-        api_root=self.params.api_root,
-        verify_ssl=self.params.verify_ssl,
-        workload_identity_email=self.params.workload_identity_email,
-    )
-
-def _build_request_url(self) -> str:
-    api_root = (
-        self.params.api_root
-        if self.params.api_root.endswith("/")
-        else f"{self.params.api_root}/"
-    )
-    # Accepts either a bare ID (fr_<uuid>) or a full resource path
-    # ending in the ID — we always strip down to the last segment.
-    refinement_id = (
-        self.params.refinement_id.rstrip("/").split("/")[-1]
-    )
-    return f"{api_root}{RULE_EXCLUSIONS_PATH}/{refinement_id}"
-
-def _perform_action(self, _=None) -> None:
-    self._delete_refinement()
-    self._process_api_response()
-
-def _delete_refinement(self) -> None:
-    url = self._build_request_url()
-    session = self.api_client.session
-    refinement_id = (
-        self.params.refinement_id.rstrip("/").split("/")[-1]
-    )
-
-    self.soar_action.LOGGER.info(
-        f"Deleting rule exclusion \"{refinement_id}\" "
-        f"at \"{url}\"."
-    )
-
-    try:
-        response = session.delete(
-            url,
-            verify=self.params.verify_ssl,
+        self.params.workload_identity_email = extract_configuration_param(
+            self.soar_action,
+            provider_name=consts.INTEGRATION_NAME,
+            param_name="Workload Identity Email",
         )
-        response.raise_for_status()
-    except requests.exceptions.HTTPError as http_e:
-        if response.status_code == 404:
+
+        self.params.api_root = extract_configuration_param(
+            self.soar_action,
+            provider_name=consts.INTEGRATION_NAME,
+            param_name="API Root",
+            is_mandatory=True,
+            print_value=True,
+        )
+
+        self.params.verify_ssl = extract_configuration_param(
+            self.soar_action,
+            provider_name=consts.INTEGRATION_NAME,
+            param_name="Verify SSL",
+            is_mandatory=True,
+            input_type=bool,
+            print_value=True,
+        )
+
+        self.params.refinement_id = extract_action_param(
+            self.soar_action,
+            param_name="Refinement ID",
+            is_mandatory=True,
+            print_value=True,
+        )
+
+    def _validate_params(self) -> None:
+        validator = validation.ParameterValidator(self.soar_action)
+        if not is_empty_string_or_none(self.params.user_service_account):
+            self.params.user_service_account = validator.validate_json(
+                param_name="User's Service Account",
+                json_string=self.params.user_service_account,
+                print_value=False,
+            )
+        validate_api_root_for_backstory(self.params.api_root)
+
+        if is_empty_string_or_none(self.params.refinement_id):
+            raise GoogleChronicleValidationError(
+                "Parameter \"Refinement ID\" cannot be empty."
+            )
+
+    def _init_api_clients(self) -> GoogleChronicleManager:
+        # Manager is reused only to obtain an authenticated requests
+        # session against the Chronicle API. All endpoint logic stays
+        # in this action.
+        return GoogleChronicleManagerV2.create_manager_instance(
+            user_service_account=self.params.user_service_account,
+            chronicle_soar=self.soar_action,
+            api_root=self.params.api_root,
+            verify_ssl=self.params.verify_ssl,
+            workload_identity_email=self.params.workload_identity_email,
+        )
+
+    def _build_request_url(self) -> str:
+        api_root = (
+            self.params.api_root
+            if self.params.api_root.endswith("/")
+            else f"{self.params.api_root}/"
+        )
+        # Accepts either a bare ID (fr_<uuid>) or a full resource path
+        # ending in the ID — we always strip down to the last segment.
+        refinement_id = (
+            self.params.refinement_id.rstrip("/").split("/")[-1]
+        )
+        return f"{api_root}{RULE_EXCLUSIONS_PATH}/{refinement_id}"
+
+    def _perform_action(self, _=None) -> None:
+        self._delete_refinement()
+        self._process_api_response()
+
+    def _delete_refinement(self) -> None:
+        url = self._build_request_url()
+        session = self.api_client.session
+        refinement_id = (
+            self.params.refinement_id.rstrip("/").split("/")[-1]
+        )
+
+        self.soar_action.LOGGER.info(
+            f"Deleting rule exclusion \"{refinement_id}\" "
+            f"at \"{url}\"."
+        )
+
+        try:
+            response = session.delete(
+                url,
+                verify=self.params.verify_ssl,
+            )
+            response.raise_for_status()
+        except requests.exceptions.HTTPError as http_e:
+            if response.status_code == 404:
+                raise GoogleChronicleManagerError(
+                    f"Rule exclusion with ID "
+                    f"\"{self.params.refinement_id}\" was not found "
+                    "in Google SecOps."
+                ) from http_e
             raise GoogleChronicleManagerError(
-                f"Rule exclusion with ID "
-                f"\"{self.params.refinement_id}\" was not found "
-                "in Google SecOps."
+                f"HTTP error while deleting rule exclusion: {http_e}"
             ) from http_e
-        raise GoogleChronicleManagerError(
-            f"HTTP error while deleting rule exclusion: {http_e}"
-        ) from http_e
-    except requests.exceptions.RequestException as req_e:
-        raise GoogleChronicleManagerError(
-            f"Network error while deleting rule exclusion: {req_e}"
-        ) from req_e
+        except requests.exceptions.RequestException as req_e:
+            raise GoogleChronicleManagerError(
+                f"Network error while deleting rule exclusion: {req_e}"
+            ) from req_e
 
-    self.soar_action.LOGGER.info(
-        f"Rule exclusion \"{refinement_id}\" successfully deleted."
-    )
+        self.soar_action.LOGGER.info(
+            f"Rule exclusion \"{refinement_id}\" successfully deleted."
+        )
 
-def _process_api_response(self) -> None:
-    refinement_id = (
-        self.params.refinement_id.rstrip("/").split("/")[-1]
-    )
-    self.output_message = (
-        f"Successfully deleted rule exclusion "
-        f"\"{refinement_id}\" from Google SecOps."
-    )
-    self.json_results = {"refinement_id": refinement_id, "deleted": True}
-```
+    def _process_api_response(self) -> None:
+        refinement_id = (
+            self.params.refinement_id.rstrip("/").split("/")[-1]
+        )
+        self.output_message = (
+            f"Successfully deleted rule exclusion "
+            f"\"{refinement_id}\" from Google SecOps."
+        )
+        self.json_results = {"refinement_id": refinement_id, "deleted": True}
+
 
 def main() -> None:
-action = DeleteRuleExclusionAction()
-action.run()
+    action = DeleteRuleExclusionAction()
+    action.run()
 
-if **name** == “**main**”:
-main()
+
+if __name__ == "__main__":
+    main()
