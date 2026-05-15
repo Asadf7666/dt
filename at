@@ -29,10 +29,10 @@ from customutils import validate_api_root_for_backstory
 RULE_EXCLUSIONS_PATH = "findingsRefinements"
 
 
-class DeleteRuleExclusionAction(Action):
+class UpdateRuleExclusionAction(Action):
 
     def __init__(self) -> None:
-        super().__init__(consts.DELETE_RULE_EXCLUSION_SCRIPT_NAME)
+        super().__init__(consts.UPDATE_RULE_EXCLUSION_SCRIPT_NAME)
         self.output_message: str = ""
         self.json_results: SingleJson = {}
 
@@ -74,6 +74,25 @@ class DeleteRuleExclusionAction(Action):
             print_value=True,
         )
 
+        self.params.display_name = extract_action_param(
+            self.soar_action,
+            param_name="Display Name",
+            print_value=True,
+        )
+
+        self.params.query = extract_action_param(
+            self.soar_action,
+            param_name="Query",
+            print_value=True,
+        )
+
+        self.params.enabled = extract_action_param(
+            self.soar_action,
+            param_name="Enabled",
+            input_type=bool,
+            print_value=True,
+        )
+
     def _validate_params(self) -> None:
         validator = validation.ParameterValidator(self.soar_action)
         if not is_empty_string_or_none(self.params.user_service_account):
@@ -87,6 +106,18 @@ class DeleteRuleExclusionAction(Action):
         if is_empty_string_or_none(self.params.refinement_id):
             raise GoogleChronicleValidationError(
                 "Parameter \"Refinement ID\" cannot be empty."
+            )
+
+        # Require at least one field to actually update.
+        if (
+            is_empty_string_or_none(self.params.display_name)
+            and is_empty_string_or_none(self.params.query)
+            and self.params.enabled is None
+        ):
+            raise GoogleChronicleValidationError(
+                "At least one of \"Display Name\", \"Query\", or "
+                "\"Enabled\" must be provided to update the "
+                "rule exclusion."
             )
 
     def _init_api_clients(self) -> GoogleChronicleManager:
@@ -114,25 +145,49 @@ class DeleteRuleExclusionAction(Action):
         )
         return f"{api_root}{RULE_EXCLUSIONS_PATH}/{refinement_id}"
 
-    def _perform_action(self, _=None) -> None:
-        self._delete_refinement()
-        self._process_api_response()
+    def _build_update_mask_and_body(self) -> tuple[str, dict[str, Any]]:
+        """Build the update_mask query string and the request body
+        from whichever optional fields the user actually provided."""
+        update_fields: list[str] = []
+        body: dict[str, Any] = {}
 
-    def _delete_refinement(self) -> None:
+        if not is_empty_string_or_none(self.params.display_name):
+            update_fields.append("display_name")
+            body["displayName"] = self.params.display_name
+
+        if not is_empty_string_or_none(self.params.query):
+            update_fields.append("query")
+            body["query"] = self.params.query
+
+        if self.params.enabled is not None:
+            update_fields.append("enabled")
+            body["enabled"] = self.params.enabled
+
+        return ",".join(update_fields), body
+
+    def _perform_action(self, _=None) -> None:
+        updated_refinement = self._update_refinement()
+        self._process_api_response(updated_refinement)
+
+    def _update_refinement(self) -> SingleJson:
         url = self._build_request_url()
         session = self.api_client.session
-        refinement_id = (
-            self.params.refinement_id.rstrip("/").split("/")[-1]
-        )
+        update_mask, body = self._build_update_mask_and_body()
 
         self.soar_action.LOGGER.info(
-            f"Deleting rule exclusion \"{refinement_id}\" "
-            f"at \"{url}\"."
+            f"Updating rule exclusion "
+            f"\"{self.params.refinement_id}\" at \"{url}\" "
+            f"with update_mask=\"{update_mask}\"."
+        )
+        self.soar_action.LOGGER.info(
+            f"Request body: {json.dumps(body)}"
         )
 
         try:
-            response = session.delete(
+            response = session.patch(
                 url,
+                params={"update_mask": update_mask},
+                json=body,
                 verify=self.params.verify_ssl,
             )
             response.raise_for_status()
@@ -143,31 +198,56 @@ class DeleteRuleExclusionAction(Action):
                     f"\"{self.params.refinement_id}\" was not found "
                     "in Google SecOps."
                 ) from http_e
+            if response.status_code == 409:
+                raise GoogleChronicleManagerError(
+                    "Update conflicts with an existing rule exclusion. "
+                    "Choose a unique display name."
+                ) from http_e
             raise GoogleChronicleManagerError(
-                f"HTTP error while deleting rule exclusion: {http_e}"
+                f"HTTP error while updating rule exclusion: {http_e}"
             ) from http_e
         except requests.exceptions.RequestException as req_e:
             raise GoogleChronicleManagerError(
-                f"Network error while deleting rule exclusion: {req_e}"
+                f"Network error while updating rule exclusion: {req_e}"
             ) from req_e
 
+        try:
+            response_json: SingleJson = response.json()
+        except json.JSONDecodeError as json_e:
+            raise GoogleChronicleManagerError(
+                "Invalid JSON in rule exclusion update response: "
+                f"{json_e}"
+            ) from json_e
+
         self.soar_action.LOGGER.info(
-            f"Rule exclusion \"{refinement_id}\" successfully deleted."
+            "Rule exclusion successfully updated. "
+            f"API response: {json.dumps(response_json)}"
         )
 
-    def _process_api_response(self) -> None:
+        return response_json
+
+    def _process_api_response(
+        self,
+        refinement: SingleJson,
+    ) -> None:
+        display_name = refinement.get("displayName", "unknown")
+        refinement_name = refinement.get("name", "")
         refinement_id = (
-            self.params.refinement_id.rstrip("/").split("/")[-1]
+            refinement_name.split("/")[-1]
+            if refinement_name
+            else "unknown"
         )
+
         self.output_message = (
-            f"Successfully deleted rule exclusion "
-            f"\"{refinement_id}\" from Google SecOps."
+            f"Successfully updated rule exclusion "
+            f"\"{display_name}\" (ID: {refinement_id}) "
+            "in Google SecOps."
         )
-        self.json_results = {"refinement_id": refinement_id, "deleted": True}
+        self.json_results = refinement
 
 
 def main() -> None:
-    action = DeleteRuleExclusionAction()
+    action = UpdateRuleExclusionAction()
     action.run()
 
 
