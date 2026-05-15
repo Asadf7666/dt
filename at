@@ -23,10 +23,11 @@ from CustomGoogleChronicleManagerV2 import GoogleChronicleManagerV2
 from customutils import validate_api_root_for_backstory
 
 
-# Path appended to the configured Chronicle API root. The configured
+# Paths appended to the configured Chronicle API root. The configured
 # api_root is expected to already include the
 # v1alpha/projects/{P}/locations/{L}/instances/{I} segment.
 RULE_EXCLUSIONS_PATH = "findingsRefinements"
+DEPLOYMENT_SUFFIX = "deployment"
 
 
 class UpdateRuleExclusionAction(Action):
@@ -108,7 +109,6 @@ class UpdateRuleExclusionAction(Action):
                 "Parameter \"Refinement ID\" cannot be empty."
             )
 
-        # Require at least one field to actually update.
         if (
             is_empty_string_or_none(self.params.display_name)
             and is_empty_string_or_none(self.params.query)
@@ -121,9 +121,6 @@ class UpdateRuleExclusionAction(Action):
             )
 
     def _init_api_clients(self) -> GoogleChronicleManager:
-        # Manager is reused only to obtain an authenticated requests
-        # session against the Chronicle API. All endpoint logic stays
-        # in this action.
         return GoogleChronicleManagerV2.create_manager_instance(
             user_service_account=self.params.user_service_account,
             chronicle_soar=self.soar_action,
@@ -132,22 +129,33 @@ class UpdateRuleExclusionAction(Action):
             workload_identity_email=self.params.workload_identity_email,
         )
 
-    def _build_request_url(self) -> str:
-        api_root = (
+    def _refinement_id(self) -> str:
+        # Accepts either a bare ID (fr_<uuid>) or a full resource path
+        # ending in the ID — we always strip down to the last segment.
+        return self.params.refinement_id.rstrip("/").split("/")[-1]
+
+    def _api_root_with_slash(self) -> str:
+        return (
             self.params.api_root
             if self.params.api_root.endswith("/")
             else f"{self.params.api_root}/"
         )
-        # Accepts either a bare ID (fr_<uuid>) or a full resource path
-        # ending in the ID — we always strip down to the last segment.
-        refinement_id = (
-            self.params.refinement_id.rstrip("/").split("/")[-1]
-        )
-        return f"{api_root}{RULE_EXCLUSIONS_PATH}/{refinement_id}"
 
-    def _build_update_mask_and_body(self) -> tuple[str, dict[str, Any]]:
-        """Build the update_mask query string and the request body
-        from whichever optional fields the user actually provided."""
+    def _refinement_url(self) -> str:
+        return (
+            f"{self._api_root_with_slash()}"
+            f"{RULE_EXCLUSIONS_PATH}/{self._refinement_id()}"
+        )
+
+    def _deployment_url(self) -> str:
+        return (
+            f"{self._api_root_with_slash()}"
+            f"{RULE_EXCLUSIONS_PATH}/{self._refinement_id()}/"
+            f"{DEPLOYMENT_SUFFIX}"
+        )
+
+    def _build_refinement_payload(self) -> tuple[str, dict[str, Any]]:
+        """Fields on the main refinement resource."""
         update_fields: list[str] = []
         body: dict[str, Any] = {}
 
@@ -159,6 +167,13 @@ class UpdateRuleExclusionAction(Action):
             update_fields.append("query")
             body["query"] = self.params.query
 
+        return ",".join(update_fields), body
+
+    def _build_deployment_payload(self) -> tuple[str, dict[str, Any]]:
+        """Fields on the deployment sub-resource."""
+        update_fields: list[str] = []
+        body: dict[str, Any] = {}
+
         if self.params.enabled is not None:
             update_fields.append("enabled")
             body["enabled"] = self.params.enabled
@@ -166,17 +181,40 @@ class UpdateRuleExclusionAction(Action):
         return ",".join(update_fields), body
 
     def _perform_action(self, _=None) -> None:
-        updated_refinement = self._update_refinement()
-        self._process_api_response(updated_refinement)
+        refinement_response: SingleJson | None = None
+        deployment_response: SingleJson | None = None
 
-    def _update_refinement(self) -> SingleJson:
-        url = self._build_request_url()
+        refinement_mask, refinement_body = self._build_refinement_payload()
+        if refinement_body:
+            refinement_response = self._patch(
+                url=self._refinement_url(),
+                update_mask=refinement_mask,
+                body=refinement_body,
+                target_description="rule exclusion metadata",
+            )
+
+        deployment_mask, deployment_body = self._build_deployment_payload()
+        if deployment_body:
+            deployment_response = self._patch(
+                url=self._deployment_url(),
+                update_mask=deployment_mask,
+                body=deployment_body,
+                target_description="rule exclusion deployment",
+            )
+
+        self._process_api_response(refinement_response, deployment_response)
+
+    def _patch(
+        self,
+        url: str,
+        update_mask: str,
+        body: dict[str, Any],
+        target_description: str,
+    ) -> SingleJson:
         session = self.api_client.session
-        update_mask, body = self._build_update_mask_and_body()
 
         self.soar_action.LOGGER.info(
-            f"Updating rule exclusion "
-            f"\"{self.params.refinement_id}\" at \"{url}\" "
+            f"Updating {target_description} at \"{url}\" "
             f"with update_mask=\"{update_mask}\"."
         )
         self.soar_action.LOGGER.info(
@@ -204,23 +242,25 @@ class UpdateRuleExclusionAction(Action):
                     "Choose a unique display name."
                 ) from http_e
             raise GoogleChronicleManagerError(
-                f"HTTP error while updating rule exclusion: {http_e}"
+                f"HTTP error while updating {target_description}: "
+                f"{http_e}. Response body: {response.text}"
             ) from http_e
         except requests.exceptions.RequestException as req_e:
             raise GoogleChronicleManagerError(
-                f"Network error while updating rule exclusion: {req_e}"
+                f"Network error while updating {target_description}: "
+                f"{req_e}"
             ) from req_e
 
         try:
             response_json: SingleJson = response.json()
         except json.JSONDecodeError as json_e:
             raise GoogleChronicleManagerError(
-                "Invalid JSON in rule exclusion update response: "
+                f"Invalid JSON in {target_description} update response: "
                 f"{json_e}"
             ) from json_e
 
         self.soar_action.LOGGER.info(
-            "Rule exclusion successfully updated. "
+            f"{target_description} successfully updated. "
             f"API response: {json.dumps(response_json)}"
         )
 
@@ -228,22 +268,41 @@ class UpdateRuleExclusionAction(Action):
 
     def _process_api_response(
         self,
-        refinement: SingleJson,
+        refinement: SingleJson | None,
+        deployment: SingleJson | None,
     ) -> None:
-        display_name = refinement.get("displayName", "unknown")
-        refinement_name = refinement.get("name", "")
+        # Prefer refinement response for json_results; fall back to
+        # deployment response when only enabled was updated.
+        primary = refinement if refinement is not None else deployment or {}
+
+        display_name = primary.get("displayName", "unknown")
+        refinement_name = primary.get("name", "")
         refinement_id = (
             refinement_name.split("/")[-1]
             if refinement_name
-            else "unknown"
+            else self._refinement_id()
         )
+
+        updated_parts: list[str] = []
+        if refinement is not None:
+            updated_parts.append("metadata")
+        if deployment is not None:
+            updated_parts.append("deployment state")
 
         self.output_message = (
             f"Successfully updated rule exclusion "
             f"\"{display_name}\" (ID: {refinement_id}) "
-            "in Google SecOps."
+            f"in Google SecOps. Updated: {', '.join(updated_parts)}."
         )
-        self.json_results = refinement
+
+        # Combine both responses in json_results so playbooks can
+        # consume whichever they need.
+        combined: SingleJson = {}
+        if refinement is not None:
+            combined["refinement"] = refinement
+        if deployment is not None:
+            combined["deployment"] = deployment
+        self.json_results = combined
 
 
 def main() -> None:
