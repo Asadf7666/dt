@@ -1,328 +1,38 @@
-from __future__ import annotations
+# UDM field mappings
+    exact_fields = [
+        ("principal.ip", na_if_empty(Principal_IP)),
+        ("principal.user.userid", na_if_empty(principal_user_userid)),
+        ('security_result.detection_fields["IOARuleName"]', na_if_empty(detection_title)),
+    ]
 
-import json
-import urllib.parse
-from typing import Any
+    regex_fields = [
+        ("target.process.command_line", to_exact_regex(target_process_command_line)),
+        ("principal.process.parent_process.parent_process.file.names", to_exact_regex(ParentProcessFileName)),
+        ("principal.process.parent_process.file.full_path", to_exact_regex(ParentImageFileName)),
+        ("principal.process.parent_process.parent_process.command_line", to_exact_regex(GrandparentCommandLine)),
+        ("principal.process.parent_process.parent_process.file.full_path", to_exact_regex(GrandparentImageFileName)),
+        ("principal.process.file.full_path", to_exact_regex(FilePath_FileName)),
+        ("principal.process.parent_process.command_line", to_exact_regex(ParentCommandLine)),
+    ]
 
-import requests
+    query_parts = []
+    for udm, val in exact_fields:
+        if val != "NA":
+            query_parts.append(f'{udm} = "{val}"')
+    for udm, val in regex_fields:
+        if val != "NA":
+            query_parts.append(f'{udm} = /{val}/')
 
-from TIPCommon.base.action import Action
-from TIPCommon.extraction import extract_action_param, extract_configuration_param
-from TIPCommon import validation
-from TIPCommon.utils import is_empty_string_or_none
-from TIPCommon.types import SingleJson
+    query = " AND ".join(query_parts) if query_parts else "NA"
 
-import customconsts as consts
-from customexceptions import (
-    GoogleChronicleManagerError,
-    GoogleChronicleValidationError,
-)
-from CustomGoogleChronicleManager import (
-    GoogleChronicleManager,
-)
-from CustomGoogleChronicleManagerV2 import GoogleChronicleManagerV2
-from customutils import validate_api_root_for_backstory
+    result = [{
+        "Display_Name": na_if_empty(Display_Name),
+        "Added_by": na_if_empty(Added_by),
+        "Custom_Rules": Custom_Rules,
+        "query": query
+    }]
 
-
-# Paths appended to the configured Chronicle API root. The configured
-# api_root is expected to already include the
-# v1alpha/projects/{P}/locations/{L}/instances/{I} segment.
-RULE_EXCLUSIONS_PATH = "findingsRefinements"
-DEPLOYMENT_SUFFIX = "deployment"
-
-
-class ApplyExclusionToRuleAction(Action):
-
-    def __init__(self) -> None:
-        super().__init__(consts.APPLY_EXCLUSION_TO_RULE_SCRIPT_NAME)
-        self.output_message: str = ""
-        self.json_results: SingleJson = {}
-
-    def _extract_action_parameters(self) -> None:
-        self.params.user_service_account = extract_configuration_param(
-            self.soar_action,
-            provider_name=consts.INTEGRATION_NAME,
-            param_name="User's Service Account",
-            remove_whitespaces=False,
-        )
-
-        self.params.workload_identity_email = extract_configuration_param(
-            self.soar_action,
-            provider_name=consts.INTEGRATION_NAME,
-            param_name="Workload Identity Email",
-        )
-
-        self.params.api_root = extract_configuration_param(
-            self.soar_action,
-            provider_name=consts.INTEGRATION_NAME,
-            param_name="API Root",
-            is_mandatory=True,
-            print_value=True,
-        )
-
-        self.params.verify_ssl = extract_configuration_param(
-            self.soar_action,
-            provider_name=consts.INTEGRATION_NAME,
-            param_name="Verify SSL",
-            is_mandatory=True,
-            input_type=bool,
-            print_value=True,
-        )
-
-        self.params.refinement_id = extract_action_param(
-            self.soar_action,
-            param_name="Refinement ID",
-            is_mandatory=True,
-            print_value=True,
-        )
-
-        self.params.enabled = extract_action_param(
-            self.soar_action,
-            param_name="Enabled",
-            input_type=bool,
-            print_value=True,
-        )
-
-        self.params.curated_rule_sets = extract_action_param(
-            self.soar_action,
-            param_name="Curated Rule Sets",
-            print_value=True,
-        )
-
-        self.params.curated_rules = extract_action_param(
-            self.soar_action,
-            param_name="Curated Rules",
-            print_value=True,
-        )
-
-        self.params.custom_rules = extract_action_param(
-            self.soar_action,
-            param_name="Custom Rules",
-            print_value=True,
-        )
-
-    def _validate_params(self) -> None:
-        validator = validation.ParameterValidator(self.soar_action)
-        if not is_empty_string_or_none(self.params.user_service_account):
-            self.params.user_service_account = validator.validate_json(
-                param_name="User's Service Account",
-                json_string=self.params.user_service_account,
-                print_value=False,
-            )
-        validate_api_root_for_backstory(self.params.api_root)
-
-        if is_empty_string_or_none(self.params.refinement_id):
-            raise GoogleChronicleValidationError(
-                "Parameter \"Refinement ID\" cannot be empty."
-            )
-
-        if (
-            self.params.enabled is None
-            and is_empty_string_or_none(self.params.curated_rule_sets)
-            and is_empty_string_or_none(self.params.curated_rules)
-            and is_empty_string_or_none(self.params.custom_rules)
-        ):
-            raise GoogleChronicleValidationError(
-                "At least one of \"Enabled\", \"Curated Rule Sets\", "
-                "\"Curated Rules\", or \"Custom Rules\" must be "
-                "provided to apply the rule exclusion."
-            )
-
-    def _init_api_clients(self) -> GoogleChronicleManager:
-        return GoogleChronicleManagerV2.create_manager_instance(
-            user_service_account=self.params.user_service_account,
-            chronicle_soar=self.soar_action,
-            api_root=self.params.api_root,
-            verify_ssl=self.params.verify_ssl,
-            workload_identity_email=self.params.workload_identity_email,
-        )
-
-    def _build_request_url(self) -> str:
-        api_root = (
-            self.params.api_root
-            if self.params.api_root.endswith("/")
-            else f"{self.params.api_root}/"
-        )
-        # Accepts either a bare ID (fr_<uuid>) or a full resource path
-        # ending in the ID — we always strip down to the last segment.
-        refinement_id = (
-            self.params.refinement_id.rstrip("/").split("/")[-1]
-        )
-        return (
-            f"{api_root}{RULE_EXCLUSIONS_PATH}/{refinement_id}/"
-            f"{DEPLOYMENT_SUFFIX}"
-        )
-
-    def _parse_resource_name_list(
-        self,
-        raw: Any,
-        param_name: str,
-    ) -> list[str]:
-        """Accepts any of:
-        - already-parsed list (e.g. from a JSON param type)
-        - JSON array string: ["projects/.../..."]
-        - quoted JSON string: "projects/.../..."
-        - bare resource-name string: projects/.../...
-        - URL-encoded resource-name (e.g. copied from a browser URL
-          bar): projects%2F.../...
-
-        All entries are URL-decoded so that "%2F" becomes "/" before
-        being sent to the API.
-        """
-        if isinstance(raw, list):
-            parsed: Any = raw
-        else:
-            # Try JSON first; if it doesn't parse, treat the raw
-            # value as a single bare resource-name string.
-            try:
-                parsed = json.loads(raw)
-            except json.JSONDecodeError:
-                parsed = raw.strip()
-
-        # Promote a single string to a one-item list.
-        if isinstance(parsed, str):
-            parsed = [parsed]
-
-        if not isinstance(parsed, list) or not all(
-            isinstance(item, str) for item in parsed
-        ):
-            raise GoogleChronicleValidationError(
-                f"Parameter \"{param_name}\" must be a resource-name "
-                "string or a JSON array of resource-name strings."
-            )
-
-        # URL-decode each entry. unquote is a no-op for already-decoded
-        # strings, so this is safe whether the user pasted from the
-        # browser URL bar or from a clean source.
-        return [urllib.parse.unquote(item).strip() for item in parsed]
-
-    def _build_update_mask_and_body(self) -> tuple[str, dict[str, Any]]:
-        """Build the update_mask query string and the request body
-        from whichever optional fields the user actually provided."""
-        update_fields: list[str] = []
-        body: dict[str, Any] = {}
-
-        if self.params.enabled is not None:
-            update_fields.append("enabled")
-            body["enabled"] = self.params.enabled
-
-        application: dict[str, list[str]] = {}
-
-        if not is_empty_string_or_none(self.params.curated_rule_sets):
-            application["curatedRuleSets"] = (
-                self._parse_resource_name_list(
-                    self.params.curated_rule_sets,
-                    "Curated Rule Sets",
-                )
-            )
-
-        if not is_empty_string_or_none(self.params.curated_rules):
-            application["curatedRules"] = self._parse_resource_name_list(
-                self.params.curated_rules,
-                "Curated Rules",
-            )
-
-        if not is_empty_string_or_none(self.params.custom_rules):
-            application["rules"] = self._parse_resource_name_list(
-                self.params.custom_rules,
-                "Custom Rules",
-            )
-
-        if application:
-            update_fields.append("detection_exclusion_application")
-            body["detectionExclusionApplication"] = application
-
-        return ",".join(update_fields), body
-
-    def _perform_action(self, _=None) -> None:
-        updated_deployment = self._apply_exclusion()
-        self._process_api_response(updated_deployment)
-
-    def _apply_exclusion(self) -> SingleJson:
-        url = self._build_request_url()
-        session = self.api_client.session
-        update_mask, body = self._build_update_mask_and_body()
-
-        self.soar_action.LOGGER.info(
-            f"Applying rule exclusion "
-            f"\"{self.params.refinement_id}\" at \"{url}\" "
-            f"with update_mask=\"{update_mask}\"."
-        )
-        self.soar_action.LOGGER.info(
-            f"Request body: {json.dumps(body)}"
-        )
-
-        try:
-            response = session.patch(
-                url,
-                params={"update_mask": update_mask},
-                json=body,
-                verify=self.params.verify_ssl,
-            )
-            response.raise_for_status()
-        except requests.exceptions.HTTPError as http_e:
-            if response.status_code == 404:
-                raise GoogleChronicleManagerError(
-                    f"Rule exclusion with ID "
-                    f"\"{self.params.refinement_id}\" was not found "
-                    "in Google SecOps."
-                ) from http_e
-            raise GoogleChronicleManagerError(
-                f"HTTP error while applying rule exclusion: {http_e}. "
-                f"Response body: {response.text}"
-            ) from http_e
-        except requests.exceptions.RequestException as req_e:
-            raise GoogleChronicleManagerError(
-                f"Network error while applying rule exclusion: {req_e}"
-            ) from req_e
-
-        try:
-            response_json: SingleJson = response.json()
-        except json.JSONDecodeError as json_e:
-            raise GoogleChronicleManagerError(
-                "Invalid JSON in rule exclusion apply response: "
-                f"{json_e}"
-            ) from json_e
-
-        self.soar_action.LOGGER.info(
-            "Rule exclusion deployment successfully updated. "
-            f"API response: {json.dumps(response_json)}"
-        )
-
-        return response_json
-
-    def _process_api_response(
-        self,
-        deployment: SingleJson,
-    ) -> None:
-        refinement_id = (
-            self.params.refinement_id.rstrip("/").split("/")[-1]
-        )
-
-        applied_parts: list[str] = []
-        if self.params.enabled is not None:
-            applied_parts.append(
-                f"enabled={self.params.enabled}"
-            )
-        if not is_empty_string_or_none(self.params.curated_rule_sets):
-            applied_parts.append("curated rule sets")
-        if not is_empty_string_or_none(self.params.curated_rules):
-            applied_parts.append("curated rules")
-        if not is_empty_string_or_none(self.params.custom_rules):
-            applied_parts.append("custom rules")
-
-        self.output_message = (
-            f"Successfully applied rule exclusion "
-            f"(ID: {refinement_id}) in Google SecOps. "
-            f"Applied: {', '.join(applied_parts)}."
-        )
-        self.json_results = deployment
-
-
-def main() -> None:
-    action = ApplyExclusionToRuleAction()
-    action.run()
-
-
-if __name__ == "__main__":
-    main()
+    status = EXECUTION_STATE_COMPLETED
+    output_message = "Successful"
+    result_value = None
+    siemplify.result.add_result_json(result)
